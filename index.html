@@ -432,7 +432,7 @@ labelRenderer.setSize(innerWidth, innerHeight);
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(38, innerWidth / innerHeight, 1, 30000);
-camera.position.set(210, 120, -280);
+camera.position.set(110, 105, 252);
 camera.lookAt(0, 13, 0);
 
 const controls = new OrbitControls(camera, renderer.domElement);
@@ -1557,7 +1557,7 @@ async function backToTower() {
   const cTop = f.zmax + 0.5, cCut = f.clip.constant;
   const cutA = animate(1300, e => f.clip.constant = lerp(cCut, cTop, e), easeInOut, 300).then(() => { f.clip.constant = 1e5; f.poche.forEach(p => p.visible = false); });
   const ups = floors.filter(g => !g.shown).map(g => setFloorShown(g, true, (g.idx - current) * 0.6));
-  const v = savedView || { pos: new THREE.Vector3(105, 62, -150), target: new THREE.Vector3(0, 9, -18) };
+  const v = savedView || { pos: new THREE.Vector3(55, 50, 120), target: new THREE.Vector3(0, 8, -12) };
   const camA = camTo(v.pos, v.target, 2000);
   setLit(f, false, 2200);
   await Promise.all([lower, cutA, camA, isoBack, ...ups]);
@@ -1733,7 +1733,7 @@ async function init() {
   requestAnimationFrame(frame);
   await wait(250);
   $('#load').classList.add('off');
-  await camTo(new THREE.Vector3(105, 62, -150), new THREE.Vector3(0, 9, -18), 3600, easeInOut);
+  await camTo(new THREE.Vector3(55, 50, 120), new THREE.Vector3(0, 8, -12), 3600, easeInOut);
   controls.enabled = true;
   state = 'tower';
   window.__ready = true;
