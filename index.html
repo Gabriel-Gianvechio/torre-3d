@@ -115,8 +115,26 @@
     #floors .ttl,#floors button .l,#floors button .s{display:none}
     #floors button{padding:4px}
     #hint{display:none}
-    #info{left:12px;right:70px;width:auto;bottom:64px;padding:14px}
+    #info{left:12px;right:70px;width:auto;bottom:64px;padding:14px;transform:translateY(14px)}
     #info .units{max-height:22vh}
+  }
+  #info .min{display:none;position:absolute;top:10px;right:10px;width:30px;height:30px;place-items:center;border:1px solid var(--line);border-radius:50%;background:rgba(255,255,255,.06);color:var(--ink-2)}
+  #info .min svg{width:14px;height:14px}
+  #mini{display:none;position:fixed;left:12px;bottom:12px;gap:4px;padding:4px;align-items:stretch;opacity:0;transform:translateY(10px);pointer-events:none;transition:opacity .3s,transform .3s}
+  #mini button{display:flex;align-items:center;gap:8px;border:0;border-radius:10px;background:rgba(255,255,255,.05);padding:7px 11px;color:var(--ink);text-align:left}
+  #mini #mini-open{background:rgba(255,198,112,.16)}
+  #mini svg{width:16px;height:16px;flex:none}
+  #mini #mini-open svg:first-child{color:var(--accent)}
+  #mini b{display:block;font-size:12.5px;font-weight:600}
+  #mini small{display:block;font-size:10.5px;color:var(--ink-2);max-width:34vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #mini #mini-back{font-size:12px;color:var(--ink-2)}
+  @media (max-width:760px){
+    #info .min{display:grid}
+    #info h2{padding-right:34px}
+    /* recolhido: so o botao "Detalhes" no canto */
+    #info.on.min{opacity:0;transform:translateY(14px);pointer-events:none}
+    #info.on.min ~ #mini{opacity:1;transform:none;pointer-events:auto}
+    #mini{display:flex}
   }
 </style>
 <script type="importmap">
@@ -149,6 +167,7 @@
 <div id="tip"></div>
 
 <div id="info" class="glass">
+  <button class="min" id="i-min" aria-label="Recolher detalhes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg></button>
   <div class="eyebrow" id="i-eyebrow"></div>
   <h2 id="i-title"></h2>
   <div class="sub" id="i-sub"></div>
@@ -161,6 +180,10 @@
     <button id="b-back" class="primary" title="Voltar (Esc)">Ver a torre</button>
   </div>
   <div class="kbd" id="i-kbd">Planta ilustrativa · divisões fictícias para teste</div>
+</div>
+<div id="mini" class="glass">
+  <button id="mini-back" aria-label="Voltar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M15 18l-6-6 6-6"/></svg><span id="mini-bl">Torre</span></button>
+  <button id="mini-open"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9.5"/><path d="M12 11v6M12 7.5v.01" stroke-linecap="round" stroke-width="2.4"/></svg><span><b>Detalhes</b><small id="mini-t"></small></span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" style="width:13px;height:13px;opacity:.6"><path d="M6 15l6-6 6 6"/></svg></button>
 </div>
 
 <div id="load"><div class="box"><div class="spin"></div><p>Carregando a torre…</p></div></div>
@@ -1609,8 +1632,8 @@ function openPlanUI(i) {
   const fins = [...new Set(def.rooms.filter(r => r.pieces.length).map(r => r.f))];
   $('#i-legend').innerHTML = fins.map(k => `<span><i style="background:${FIN[k].legend[0]}"></i>${FIN[k].legend[1]}</span>`).join('');
   $('#b-up').disabled = i >= 9; $('#b-down').disabled = i <= 0;
-  $('#i-kbd').textContent = def.apts ? 'Clique em um apartamento para vê-lo isolado' : 'Planta ilustrativa · divisões fictícias para teste';
-  $('#info').classList.add('on');
+  $('#i-kbd').textContent = def.apts ? (TOUCH ? 'Toque em um apartamento para vê-lo isolado' : 'Clique em um apartamento para vê-lo isolado') : 'Planta ilustrativa · divisões fictícias para teste';
+  showInfo();
 }
 function openAptUI(u) {
   const f = floors[current];
@@ -1626,8 +1649,8 @@ function openAptUI(u) {
   });
   const fins = [...new Set(rooms.map(r => r.f))];
   $('#i-legend').innerHTML = fins.map(k => `<span><i style="background:${FIN[k].legend[0]}"></i>${FIN[k].legend[1]}</span>`).join('');
-  $('#i-kbd').textContent = 'Passe o mouse nos cômodos · Esc volta ao andar';
-  $('#info').classList.add('on');
+  $('#i-kbd').textContent = TOUCH ? 'Toque nos cômodos para ver o nome' : 'Passe o mouse nos cômodos · Esc volta ao andar';
+  showInfo();
 }
 function closePlanUI(i) {
   $('#info').classList.remove('on');
@@ -1638,6 +1661,17 @@ function closePlanUI(i) {
     p.def.rooms.forEach(r => { r.hiT = 0; if (r.hi) r.hi.material.opacity = 0; r.el?.classList.remove('on'); });
   }
 }
+const TOUCH = matchMedia('(pointer: coarse)').matches;
+// painel: no celular abre recolhido no botao "Detalhes" (no PC a classe .min nao tem efeito)
+function showInfo() {
+  $('#mini-t').textContent = $('#i-title').textContent;
+  $('#mini-bl').textContent = aptFocus ? 'Andar' : 'Torre';
+  $('#info').classList.add('on', 'min');
+}
+const collapseInfo = () => $('#info').classList.add('min');
+$('#i-min').onclick = collapseInfo;
+$('#mini-open').onclick = () => $('#info').classList.remove('min');
+$('#mini-back').onclick = () => { if (state !== 'plan') return; if (aptFocus) unfocusApt(); else backToTower(); };
 $('#b-back').onclick = backToTower;
 $('#b-floor').onclick = unfocusApt;
 $('#b-up').onclick = () => { if (state === 'plan' && !aptFocus && current < 9) openFloor(current + 1); };
@@ -1684,6 +1718,7 @@ renderer.domElement.addEventListener('pointerup', ev => {
     const hit = ray.intersectObjects(hoverables.filter(m => floors[m.userData.floor].shown), false)[0];
     if (hit) openFloor(hit.object.userData.floor);
   } else if (state === 'plan') {
+    collapseInfo();                              // celular: tocar na planta recolhe o painel
     const r = roomUnder();
     if (aptFocus) setRoomHover(r);              // toque: mostra o comodo
     else if (isApt(r)) focusApt(r.unit);
