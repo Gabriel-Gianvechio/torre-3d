@@ -69,7 +69,7 @@
   #info .eyebrow{font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent)}
   #info h2{margin:4px 0 2px;font-size:22px;letter-spacing:-.01em}
   #info .sub{font-size:12.5px;color:var(--ink-2)}
-  #info .units{margin:14px 0 10px;display:flex;flex-direction:column;gap:3px;max-height:34vh;overflow:auto}
+  #info .units{margin:14px 0 10px;display:flex;flex-direction:column;gap:3px;max-height:40vh;overflow:auto}
   #info .unit{display:flex;justify-content:space-between;align-items:center;padding:7px 10px;border-radius:8px;font-size:12.5px;background:rgba(255,255,255,.04);cursor:default;transition:background .15s}
   #info .unit:hover,#info .unit.hov{background:rgba(255,198,112,.16)}
   #info .unit b{font-weight:600}
@@ -85,13 +85,16 @@
   #info .kbd{margin-top:8px;font-size:10.5px;color:var(--ink-3);text-align:center}
 
   /* rotulos da planta */
-  .rl{font-size:10.5px;line-height:1.2;text-align:center;color:#2a2621;background:rgba(255,253,248,.86);padding:3px 7px;border-radius:5px;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,.18);opacity:0;transition:opacity .5s}
+  .rl{font-size:10.5px;line-height:1.2;text-align:center;color:#2a2621;background:rgba(255,253,248,.94);padding:3px 7px;border-radius:5px;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,.25);opacity:0;transition:opacity .18s}
   .rl b{font-weight:600;display:block}
   .rl span{color:#6d655b;font-size:9.5px}
   .rl.sm{font-size:9.5px;padding:2px 5px}
   .al{font-size:11px;font-weight:700;letter-spacing:.06em;color:#fff;background:#1f2731;padding:4px 9px;border-radius:20px;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,.3);opacity:0;transition:opacity .5s}
   .al em{font-style:normal;color:var(--accent);margin-left:4px;font-weight:600}
-  .lbl-on .rl,.lbl-on .al{opacity:1}
+  .lbl-on .al,.lbl-on .rl.on{opacity:1}
+  .lbl-on .rl.gone,.lbl-on .al.gone{opacity:0}
+  #info .unit.go{cursor:pointer}
+  #info .unit.go span::after{content:'›';margin-left:8px;color:var(--accent);font-weight:700}
 
   /* carregando */
   #load{position:fixed;inset:0;display:grid;place-items:center;background:#0d1015;z-index:10;transition:opacity .8s}
@@ -154,9 +157,10 @@
   <div class="row">
     <button id="b-down" title="Andar abaixo (↓)">▼ Abaixo</button>
     <button id="b-up" title="Andar acima (↑)">▲ Acima</button>
+    <button id="b-floor" title="Voltar ao andar (Esc)" style="display:none">◀ Ver o andar</button>
     <button id="b-back" class="primary" title="Voltar (Esc)">Ver a torre</button>
   </div>
-  <div class="kbd">Planta ilustrativa · divisões fictícias para teste</div>
+  <div class="kbd" id="i-kbd">Planta ilustrativa · divisões fictícias para teste</div>
 </div>
 
 <div id="load"><div class="box"><div class="spin"></div><p>Carregando a torre…</p></div></div>
@@ -886,11 +890,14 @@ function buildTower(gltf) {
     const data = FLOORS[key];
     const g = new THREE.Group(); tower.add(g);
     const clip = new THREE.Plane(new THREE.Vector3(0, -1, 0), 1e5);
-    const facadeMat = facadeBase.clone(); facadeMat.clippingPlanes = [clip]; facadeMat.clipShadows = true;
-    const glassMat = makeGlassMat(); glassMat.clippingPlanes = [clip]; glassMat.clipShadows = true;
-    const pocheMat = new THREE.MeshBasicMaterial({ color: 0x2e2b27, side: THREE.BackSide, clippingPlanes: [clip] });
+    // cortes verticais usados para isolar um apartamento
+    const clipX = new THREE.Plane(new THREE.Vector3(1, 0, 0), 1e5), clipZ = new THREE.Plane(new THREE.Vector3(0, 0, 1), 1e5);
+    const cps = [clip, clipX, clipZ];
+    const facadeMat = facadeBase.clone(); facadeMat.clippingPlanes = cps; facadeMat.clipShadows = true;
+    const glassMat = makeGlassMat(); glassMat.clippingPlanes = cps; glassMat.clipShadows = true;
+    const pocheMat = new THREE.MeshBasicMaterial({ color: 0x2e2b27, side: THREE.BackSide, clippingPlanes: cps });
     const floorY = i === 0 ? 0.17 : i === 9 ? data.zmin + 0.25 : data.zmin + 0.15;
-    const fl = { idx: i, name: FLOOR_NAMES[i], data, group: g, clip, facadeMat, glassMat, pocheMat, floorY, zmax: data.zmax, meshes: [], poche: [], shown: true, hover: 0, hoverT: 0, plan: null };
+    const fl = { idx: i, name: FLOOR_NAMES[i], data, group: g, clip, clipX, clipZ, facadeMat, glassMat, pocheMat, floorY, zmax: data.zmax, meshes: [], poche: [], shown: true, hover: 0, hoverT: 0, plan: null };
     // centro pela projecao
     let bx0 = 1e9, by0 = 1e9, bx1 = -1e9, by1 = -1e9;
     for (const r of data.foot) { bx0 = Math.min(bx0, r[0]); by0 = Math.min(by0, r[1]); bx1 = Math.max(bx1, r[2]); by1 = Math.max(by1, r[3]); }
@@ -944,8 +951,7 @@ const TYP_ROOMS = [
   { n: 'Dormitório', r: [[4.61, 3.6, 7.4, 6.8]], f: 'wood' },
   { n: 'Suíte', r: [[7.4, 3.0, 10.4, 6.8]], f: 'wood' },
   { n: 'Banho Suíte', r: [[7.4, 1.53, 10.4, 3.0]], f: 'bath' },
-  { n: 'Varanda', r: [[0, 6.2, 5.0, 11.6]], f: 'deck', outside: true },
-  { n: 'Varanda', r: [[5.0, 6.2, 11.2, 9.2]], f: 'deck', outside: true },
+  { n: 'Varanda', r: [[0, 6.2, 5.0, 11.6], [5.0, 6.2, 11.2, 9.2]], f: 'deck', outside: true },
 ];
 const TYP_DOORS = [[3.0, 0.76, 'v', 0.9], [3.8, 1.52, 'h', 1.5], [3.05, 4.2, 'h', 2.9], [4.61, 3.1, 'v', 0.95], [4.61, 0.76, 'v', 0.7],
   [6.0, 2.6, 'h', 0.7], [5.5, 3.6, 'h', 0.8], [7.4, 3.3, 'v', 0.55], [9.3, 3.0, 'h', 0.7]];
@@ -1066,21 +1072,38 @@ function buildPlan(fl) {
     room.area = room.pieces.reduce((s, a) => s + (a[2] - a[0]) * (a[3] - a[1]), 0);
   });
   const roomAt = (x, y) => { for (const p of pieces) if (x > p.r[0] && x < p.r[2] && y > p.r[1] && y < p.r[3]) return p.id; return -1; };
+  // cada apartamento vira um grupo proprio (para poder isola-lo); o resto fica em '_'
+  const partKey = id => { const u = def.rooms[id].unit; return u && u.startsWith('Apto') ? u : '_'; };
+  const parts = new Map();
+  const part = k => {
+    let p = parts.get(k);
+    if (!p) {
+      const outer = new THREE.Group(); raise.add(outer);
+      const inner = new THREE.Group(); inner.position.y = -y0; outer.add(inner);
+      p = { key: k, outer, inner, mats: [], labels: [] };
+      parts.set(k, p);
+    }
+    return p;
+  };
+  const addMesh = (k, builder, mat, opt) => { const p = part(k); p.mats.push(mat); const m = meshFrom(builder, mat, opt); p.inner.add(m); return m; };
   // pisos
-  const finB = {};
-  for (const room of def.rooms) {
-    const b = finB[room.f] || (finB[room.f] = new GeoBuilder());
-    for (const a of room.pieces) b.plane(a[0], -a[3], a[2], -a[1], y0 + 0.006, FIN[room.f].T);
-  }
-  for (const k in finB) {
-    const m = meshFrom(finB[k], new THREE.MeshStandardMaterial({ map: TEX[FIN[k].tex], roughness: k === 'wood' ? 0.55 : 0.4, color: FIN[k].c }));
-    group.add(m);
+  const finB = new Map();
+  def.rooms.forEach((room, id) => {
+    room.id = id; room.part = partKey(id);
+    const k = room.part + '|' + room.f;
+    if (!finB.has(k)) finB.set(k, new GeoBuilder());
+    for (const a of room.pieces) finB.get(k).plane(a[0], -a[3], a[2], -a[1], y0 + 0.006, FIN[room.f].T);
+  });
+  for (const [k, b] of finB) {
+    const [pk, f] = k.split('|');
+    addMesh(pk, b, new THREE.MeshStandardMaterial({ map: TEX[FIN[f].tex], roughness: f === 'wood' ? 0.55 : 0.4, color: FIN[f].c }));
   }
   // paredes: fronteiras entre comodos diferentes, menos portas
   const lines = new Map();
   const addLine = (dir, c, a, b) => { const k = dir + (Math.round(c * 100) / 100).toFixed(2); const l = lines.get(k) || { dir, c: Math.round(c * 100) / 100, iv: [] }; l.iv.push([a, b]); lines.set(k, l); };
   for (const p of pieces) { const [x0, yy0, x1, yy1] = p.r; addLine('h', yy0, x0, x1); addLine('h', yy1, x0, x1); addLine('v', x0, yy0, yy1); addLine('v', x1, yy0, yy1); }
-  const walls = new GeoBuilder(), tops = new GeoBuilder();
+  const wb = new Map();
+  const WB = k => { if (!wb.has(k)) wb.set(k, { walls: new GeoBuilder(), tops: new GeoBuilder() }); return wb.get(k); };
   const TH = 0.12, STEP = 0.05;
   for (const l of lines.values()) {
     l.iv.sort((a, b) => a[0] - b[0]);
@@ -1091,9 +1114,12 @@ function buildPlan(fl) {
       let run = null;
       const flush = () => {
         if (!run) return;
-        const s0 = run[0] - 0.06, s1 = run[1] + 0.06;
-        if (l.dir === 'h') { walls.box(s0, y0, -l.c - TH / 2, s1, y0 + cutH, -l.c + TH / 2, 1, { top: false }); tops.plane(s0, -l.c - TH / 2, s1, -l.c + TH / 2, y0 + cutH + 0.002, 1); }
-        else { walls.box(l.c - TH / 2, y0, -s1, l.c + TH / 2, y0 + cutH, -s0, 1, { top: false }); tops.plane(l.c - TH / 2, -s1, l.c + TH / 2, -s0, y0 + cutH + 0.002, 1); }
+        const s0 = run.a - 0.06, s1 = run.b + 0.06;
+        for (const k of run.keys) {
+          const { walls, tops } = WB(k);
+          if (l.dir === 'h') { walls.box(s0, y0, -l.c - TH / 2, s1, y0 + cutH, -l.c + TH / 2, 1, { top: false }); tops.plane(s0, -l.c - TH / 2, s1, -l.c + TH / 2, y0 + cutH + 0.002, 1); }
+          else { walls.box(l.c - TH / 2, y0, -s1, l.c + TH / 2, y0 + cutH, -s0, 1, { top: false }); tops.plane(l.c - TH / 2, -s1, l.c + TH / 2, -s0, y0 + cutH + 0.002, 1); }
+        }
         run = null;
       };
       for (let s = a + STEP / 2; s < b; s += STEP) {
@@ -1101,49 +1127,65 @@ function buildPlan(fl) {
         const A = roomAt(px + nx * 0.08, py + ny * 0.08), B = roomAt(px - nx * 0.08, py - ny * 0.08);
         let wall = A >= 0 && B >= 0 && A !== B && !def.rooms[A].outside && !def.rooms[B].outside;
         if (wall && ds.some(d => Math.abs(s - (l.dir === 'h' ? d[0] : d[1])) < d[3] / 2)) wall = false;
-        if (wall) { if (run) run[1] = s + STEP / 2; else run = [s - STEP / 2, s + STEP / 2]; } else flush();
+        if (!wall) { flush(); continue; }
+        // parede entre apto e area comum pertence ao apto; entre dois aptos, aos dois
+        const ka = partKey(A), kb = partKey(B);
+        const keys = ka === kb ? [ka] : ka === '_' ? [kb] : kb === '_' ? [ka] : [ka, kb];
+        const sig = keys.join(',');
+        if (run && run.sig === sig) run.b = s + STEP / 2;
+        else { flush(); run = { a: s - STEP / 2, b: s + STEP / 2, keys, sig }; }
       }
       flush();
     }
   }
-  const wallMat = new THREE.MeshStandardMaterial({ color: 0xf3f0ea, roughness: 0.9 });
-  const wm = meshFrom(walls, wallMat, { cast: true }); raise.add(wm); wm.position.y = -y0;
-  const tm = meshFrom(tops, new THREE.MeshBasicMaterial({ color: 0x2e2b27 })); raise.add(tm); tm.position.y = -y0;
+  for (const [k, { walls, tops }] of wb) {
+    addMesh(k, walls, new THREE.MeshStandardMaterial({ color: 0xf3f0ea, roughness: 0.9 }), { cast: true });
+    addMesh(k, tops, new THREE.MeshBasicMaterial({ color: 0x2e2b27 }));
+  }
   // moveis
-  const fb = {};
+  const fb = new Map();
   for (const [x0, yy0, x1, yy1, h, c] of def.furn) {
-    if (roomAt((x0 + x1) / 2, (yy0 + yy1) / 2) < 0) continue;
-    (fb[c] || (fb[c] = new GeoBuilder())).box(x0, y0 + 0.006, -yy1, x1, y0 + 0.006 + h, -yy0, 1);
+    const id = roomAt((x0 + x1) / 2, (yy0 + yy1) / 2);
+    if (id < 0) continue;
+    const k = partKey(id) + '|' + c;
+    if (!fb.has(k)) fb.set(k, new GeoBuilder());
+    fb.get(k).box(x0, y0 + 0.006, -yy1, x1, y0 + 0.006 + h, -yy0, 1);
   }
-  for (const c in fb) {
-    const mat = new THREE.MeshStandardMaterial({ color: FURN_C[c], roughness: c === 'shower' ? 0.1 : 0.7, metalness: c === 'solar' ? 0.5 : 0 });
-    const m = meshFrom(fb[c], mat, { cast: true }); m.position.y = -y0; raise.add(m);
+  for (const [k, b] of fb) {
+    const [pk, c] = k.split('|');
+    addMesh(pk, b, new THREE.MeshStandardMaterial({ color: FURN_C[c], roughness: c === 'shower' ? 0.1 : 0.7, metalness: c === 'solar' ? 0.5 : 0 }), { cast: true });
   }
-  // rotulos e destaques por unidade
+  // rotulos (aparecem so no hover) e destaques por comodo / unidade
+  const hiMat = () => new THREE.MeshBasicMaterial({ color: 0xffc670, transparent: true, opacity: 0, depthWrite: false });
   const units = new Map();
   for (const room of def.rooms) {
     if (!room.pieces.length) continue;
+    const p = part(room.part);
     const big = room.pieces.reduce((a, b) => (b[2] - b[0]) * (b[3] - b[1]) > (a[2] - a[0]) * (a[3] - a[1]) ? b : a);
     const el = document.createElement('div'); el.className = 'rl' + (room.small ? ' sm' : '');
     el.innerHTML = `<b>${room.n}</b><span>${fmtArea(room.area)}</span>`;
     const lab = new CSS2DObject(el); lab.position.copy(toThree((big[0] + big[2]) / 2, (big[1] + big[3]) / 2, y0 + cutH + 0.3));
-    group.add(lab);
-    if (room.unit) { const u = units.get(room.unit) || { name: room.unit, area: 0, rooms: [], pieces: [] }; u.area += room.area; u.rooms.push(room.n); u.pieces.push(...room.pieces); units.set(room.unit, u); }
+    p.inner.add(lab); p.labels.push(el); room.el = el;
+    const hb = new GeoBuilder(); for (const a of room.pieces) hb.plane(a[0], -a[3], a[2], -a[1], y0 + 0.025, 1);
+    room.hi = new THREE.Mesh(hb.build(), hiMat()); room.hi.renderOrder = 3; p.inner.add(room.hi);
+    if (room.unit) {
+      const u = units.get(room.unit) || { name: room.unit, area: 0, rooms: [], roomObjs: [], pieces: [], part: room.part };
+      u.area += room.area; u.rooms.push(room.n); u.roomObjs.push(room); u.pieces.push(...room.pieces); units.set(room.unit, u);
+    }
   }
   for (const a of def.apts || []) {
-    const u = units.get(a.unit);
+    const u = units.get(a.unit), p = part(u.part);
     const el = document.createElement('div'); el.className = 'al';
     el.innerHTML = `${a.unit.replace('Apto ', 'APTO ')}<em>${fmtArea(u.area)}</em>`;
-    const lab = new CSS2DObject(el); lab.position.copy(toThree(a.at[0], a.at[1], y0 + cutH + 0.6)); group.add(lab);
+    const lab = new CSS2DObject(el); lab.position.copy(toThree(a.at[0], a.at[1], y0 + cutH + 0.6)); p.inner.add(lab); p.labels.push(el);
   }
-  const hiMat = () => new THREE.MeshBasicMaterial({ color: 0xffc670, transparent: true, opacity: 0, depthWrite: false });
   for (const u of units.values()) {
     const b = new GeoBuilder(); for (const a of u.pieces) b.plane(a[0], -a[3], a[2], -a[1], y0 + 0.02, 1);
-    u.mesh = new THREE.Mesh(b.build(), hiMat()); u.mesh.userData.unit = u; u.mesh.renderOrder = 3; group.add(u.mesh);
+    u.mesh = new THREE.Mesh(b.build(), hiMat()); u.mesh.userData.unit = u; u.mesh.renderOrder = 3; part(u.part).inner.add(u.mesh);
+    u.bbox = u.pieces.reduce((r, a) => [Math.min(r[0], a[0]), Math.min(r[1], a[1]), Math.max(r[2], a[2]), Math.max(r[3], a[3])], [1e9, 1e9, -1e9, -1e9]);
   }
-  // luzes internas (acesas no modo planta)
   scene.add(group);
-  fl.plan = { group, raise, def, units: [...units.values()], unitMeshes: [...units.values()].map(u => u.mesh) };
+  fl.plan = { group, raise, def, y0, roomAt, parts, units: [...units.values()], unitMeshes: [...units.values()].map(u => u.mesh) };
   return fl.plan;
 }
 
@@ -1154,6 +1196,9 @@ let state = 'intro';      // intro | tower | busy | plan
 let current = -1;         // andar aberto
 let hovered = -1;
 let hoveredUnit = null;
+let hoveredRoom = null;
+let aptFocus = null;      // nome do apto isolado
+let iso = null;           // estado do isolamento { f, others, g }
 let savedView = null;
 const interiorLights = [];
 for (let k = 0; k < 5; k++) { const l = new THREE.PointLight(0xffd7a3, 0, 12, 1.6); scene.add(l); interiorLights.push(l); }
@@ -1175,8 +1220,29 @@ function setUnitHover(u) {
   if (u === hoveredUnit) return;
   hoveredUnit = u;
   if (current >= 0 && floors[current].plan) for (const x of floors[current].plan.units) x.hiT = x === u ? 0.45 : 0;
-  document.querySelectorAll('#i-units .unit').forEach(el => el.classList.toggle('hov', u && el.dataset.u === u.name));
-  renderer.domElement.style.cursor = u ? 'pointer' : '';
+  if (!aptFocus) document.querySelectorAll('#i-units .unit').forEach(el => el.classList.toggle('hov', !!u && el.dataset.u === u.name));
+  renderer.domElement.style.cursor = u && u.name.startsWith('Apto') ? 'pointer' : '';
+}
+// comodo sob o mouse: rotulo aparece so nele
+function setRoomHover(r) {
+  if (r === hoveredRoom) return;
+  if (hoveredRoom?.el) hoveredRoom.el.classList.remove('on');
+  hoveredRoom = r;
+  if (r?.el) r.el.classList.add('on');
+  const p = current >= 0 && floors[current].plan;
+  if (!p) return;
+  for (const x of p.def.rooms) x.hiT = aptFocus && x === r ? 0.38 : 0;
+  if (aptFocus) document.querySelectorAll('#i-units .unit').forEach(el => el.classList.toggle('hov', !!r && +el.dataset.r === r.id));
+  else setUnitHover(r && r.unit ? p.units.find(x => x.name === r.unit) : null);
+}
+const floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), tmpV = new THREE.Vector3();
+function roomUnder() {
+  const p = floors[current]?.plan; if (!p) return null;
+  floorPlane.constant = -p.y0;
+  if (!ray.ray.intersectPlane(floorPlane, tmpV)) return null;
+  const id = p.roomAt(tmpV.x, -tmpV.z); if (id < 0) return null;
+  const r = p.def.rooms[id];
+  return aptFocus && r.unit !== aptFocus ? null : r;
 }
 
 function setFloorShown(f, shown, rank = 0) {
@@ -1215,23 +1281,105 @@ function camTo(pos, target, dur = 1800, ease = easeInOut) {
   }, ease);
 }
 
-function planFrame(f) {
-  const [x0, y0, x1, y1] = f.bbox;
-  const w = x1 - x0 + 4, h = y1 - y0 + 4;
+function planFrame(f, rect = f.bbox, pad = 4) {
+  const [x0, y0, x1, y1] = rect;
+  const w = x1 - x0 + pad, h = y1 - y0 + pad;
   const vf = THREE.MathUtils.degToRad(camera.fov) / 2;
   const sidePanel = innerWidth > 760 ? 1.28 : 1.05;
   const r = Math.max(h / (2 * Math.tan(vf)), (w * sidePanel) / (2 * Math.tan(vf) * camera.aspect)) * 1.08;
-  const target = f.center.clone();
+  const target = toThree((x0 + x1) / 2, (y0 + y1) / 2, f.floorY);
   if (innerWidth > 760) target.x -= w * 0.06;
   const pos = target.clone().add(new THREE.Vector3().setFromSpherical(new THREE.Spherical(r, 0.2, 0)));
   return { pos, target };
+}
+
+// luzes internas: espalhadas pelo andar ou concentradas no apto isolado
+function lightsFor(f, rect) {
+  const pts = rect ? [[.3, .3], [.7, .3], [.7, .7], [.3, .7], [.5, .5]].map(([a, b]) => [lerp(rect[0], rect[2], a), lerp(rect[1], rect[3], b)])
+    : [[-5.5, 4.5], [5.5, 4.5], [5.5, -4.5], [-5.5, -4.5], [0, 0]];
+  return pts.map(p => toThree(p[0], p[1], f.floorY + 2.4));
+}
+const lightBase = () => 6 + 22 * TS.night;
+function dimLights(k0, k1, dur = 1000) {
+  return animate(dur, e => interiorLights.forEach(l => l.intensity = lightBase() * lerp(k0, k1, e)));
+}
+function moveLights(to, dur = 1200) {
+  if (!dur) { interiorLights.forEach((l, k) => l.position.copy(to[k])); return Promise.resolve(); }
+  const from = interiorLights.map(l => l.position.clone());
+  return animate(dur, e => interiorLights.forEach((l, k) => l.position.lerpVectors(from[k], to[k], e)));
+}
+
+/* ---------- isolar um apartamento ---------- */
+// k = 0 -> andar inteiro; k = 1 -> so o apto (os outros afundam/somem e a casca e cortada)
+function setIsoClip(s, k) {
+  const { f, g } = s;
+  f.clipX.normal.set(g.sx, 0, 0); f.clipZ.normal.set(0, 0, -g.sy);
+  f.clipX.constant = -g.sx * lerp(g.xs, g.xe, k);
+  f.clipZ.constant = -g.sy * lerp(g.ys, g.ye, k);
+}
+function setIso(s, k) {
+  setIsoClip(s, k);
+  for (const x of s.others) { x.outer.scale.y = Math.max(1 - k, 0.001); x.mats.forEach(m => m.opacity = 1 - k); }
+}
+function finishIso() {
+  if (!iso) return;
+  setIso(iso, 0);
+  for (const x of iso.others) {
+    x.outer.visible = true;
+    x.mats.forEach(m => { m.transparent = false; m.opacity = 1; m.needsUpdate = true; });
+    x.labels.forEach(el => el.classList.remove('gone'));
+  }
+  iso.self.labels.forEach(el => el.classList.remove('gone'));
+  iso.f.clipX.constant = iso.f.clipZ.constant = 1e5;
+  iso = null; aptFocus = null;
+}
+async function focusApt(name) {
+  if (state !== 'plan' || aptFocus) return;
+  const f = floors[current], p = f.plan, u = p.units.find(x => x.name === name);
+  if (!u) return;
+  state = 'busy'; controls.enabled = false;
+  setRoomHover(null); setUnitHover(null); hideTip();
+  aptFocus = name;
+  $('#info').classList.remove('on');
+  const [ux0, uy0, ux1, uy1] = u.bbox, [bx0, by0, bx1, by1] = f.bbox, M = 0.07;
+  const sx = ux0 + ux1 >= 0 ? 1 : -1, sy = uy0 + uy1 >= 0 ? 1 : -1;
+  const g = { sx, sy, xs: sx > 0 ? bx0 - 1 : bx1 + 1, xe: sx > 0 ? ux0 - M : ux1 + M, ys: sy > 0 ? by0 - 1 : by1 + 1, ye: sy > 0 ? uy0 - M : uy1 + M };
+  const self = p.parts.get(name);
+  const others = [...p.parts.values()].filter(x => x !== self);
+  iso = { f, g, self, others };
+  for (const x of others) { x.mats.forEach(m => { m.transparent = true; m.needsUpdate = true; }); x.labels.forEach(el => el.classList.add('gone')); }
+  self.labels.forEach(el => { if (el.classList.contains('al')) el.classList.add('gone'); });
+  const fr = planFrame(f, u.bbox, 3);
+  const camA = camTo(fr.pos, fr.target, 1600);
+  moveLights(lightsFor(f, u.bbox)); dimLights(1, 0.32);
+  const isoA = animate(1300, e => setIso(iso, e), easeInOut, 100).then(() => others.forEach(x => x.outer.visible = false));
+  await Promise.all([camA, isoA]);
+  openAptUI(u);
+  controls.enabled = true; controls.minDistance = 6;
+  state = 'plan';
+}
+async function unfocusApt() {
+  if (state !== 'plan' || !aptFocus) return;
+  state = 'busy'; controls.enabled = false;
+  setRoomHover(null); hideTip();
+  $('#info').classList.remove('on');
+  const f = floors[current], s = iso;
+  s.others.forEach(x => { x.outer.visible = true; x.labels.forEach(el => el.classList.remove('gone')); });
+  s.self.labels.forEach(el => el.classList.remove('gone'));
+  const fr = planFrame(f);
+  moveLights(lightsFor(f)); dimLights(0.32, 1);
+  await Promise.all([camTo(fr.pos, fr.target, 1400), animate(1100, e => setIso(s, 1 - e), easeInOut)]);
+  finishIso();
+  openPlanUI(current);
+  controls.enabled = true; controls.minDistance = 10;
+  state = 'plan';
 }
 
 async function openFloor(i) {
   if (state === 'busy' || state === 'intro' || i === current) return;
   const from = state, prev = current;
   state = 'busy'; controls.enabled = false;
-  setHover(-1); setUnitHover(null); hideTip();
+  setHover(-1); setRoomHover(null); setUnitHover(null); hideTip();
   const f = floors[i];
   if (!f.plan) buildPlan(f);
   if (from === 'tower') {
@@ -1245,6 +1393,7 @@ async function openFloor(i) {
     await Promise.all([camTo(pos, tgt, 1700), setLit(f, true, 1500).then(() => 0)]);
     await wait(650);
   } else {
+    finishIso();
     closePlanUI(prev);
     setLit(floors[prev], false, 600);
     setLit(f, true, 800);
@@ -1266,8 +1415,7 @@ async function openFloor(i) {
   plan.group.visible = true; plan.raise.scale.y = 0.001;
   const rise = animate(1100, e => plan.raise.scale.y = Math.max(e, 0.001), easeOut, from === 'tower' ? 1000 : 400);
   // luzes internas
-  const lp = [[-5.5, 4.5], [5.5, 4.5], [5.5, -4.5], [-5.5, -4.5], [0, 0]];
-  interiorLights.forEach((l, k) => l.position.copy(toThree(lp[k][0], lp[k][1], f.floorY + 2.4)));
+  moveLights(lightsFor(f), 0);
   animate(1200, e => interiorLights.forEach(l => l.intensity = e * (6 + 22 * TS.night)), easeOut, 600);
   await Promise.all([...ups, cutA, camA, rise]);
   $('#labels').classList.add('lbl-on');
@@ -1281,12 +1429,14 @@ async function openFloor(i) {
 async function backToTower() {
   if (state !== 'plan') return;
   state = 'busy'; controls.enabled = false;
-  setUnitHover(null); hideTip();
+  setRoomHover(null); setUnitHover(null); hideTip();
   const f = floors[current];
-  closePlanUI(current);
+  $('#info').classList.remove('on');
   $('#labels').classList.remove('lbl-on');
   const plan = f.plan;
-  const lower = animate(600, e => plan.raise.scale.y = Math.max(1 - e, 0.001)).then(() => plan.group.visible = false);
+  const s = iso;
+  const isoBack = s ? animate(1100, e => setIsoClip(s, 1 - e), easeInOut) : null;
+  const lower = animate(600, e => plan.raise.scale.y = Math.max(1 - e, 0.001)).then(() => closePlanUI(current));
   animate(700, e => interiorLights.forEach(l => l.intensity *= (1 - e)));
   const cTop = f.zmax + 0.5, cCut = f.clip.constant;
   const cutA = animate(1300, e => f.clip.constant = lerp(cCut, cTop, e), easeInOut, 300).then(() => { f.clip.constant = 1e5; f.poche.forEach(p => p.visible = false); });
@@ -1294,7 +1444,8 @@ async function backToTower() {
   const v = savedView || { pos: new THREE.Vector3(48, 22, -62), target: new THREE.Vector3(0, 13, 0) };
   const camA = camTo(v.pos, v.target, 2000);
   setLit(f, false, 2200);
-  await Promise.all([lower, cutA, camA, ...ups]);
+  await Promise.all([lower, cutA, camA, isoBack, ...ups]);
+  finishIso();
   interiorLights.forEach(l => l.intensity = 0);
   gtao.enabled = true;
   focusBloom = 0; applyTime(false);
@@ -1318,23 +1469,48 @@ function buildFloorList() {
   }
 }
 function updateFloorList() { document.querySelectorAll('#floors button').forEach(b => b.classList.toggle('sel', +b.dataset.i === current)); }
+function setPanelMode(apt) {
+  $('#b-up').style.display = $('#b-down').style.display = apt ? 'none' : '';
+  $('#b-floor').style.display = apt ? '' : 'none';
+}
 function openPlanUI(i) {
   const f = floors[i], def = f.plan.def;
+  setPanelMode(false);
   $('#i-eyebrow').textContent = def.eyebrow;
   $('#i-title').textContent = f.name;
   $('#i-sub').textContent = def.kind;
   const units = f.plan.units;
   $('#i-units').innerHTML = units.map(u => {
-    const meta = u.name.startsWith('Apto') ? `${u.rooms.includes('Suíte') ? '2 dorm. (1 suíte)' : ''} · ${fmtArea(u.area)}` : fmtArea(u.area);
-    return `<div class="unit" data-u="${u.name}"><b>${u.name}</b><span>${meta}</span></div>`;
+    const apt = u.name.startsWith('Apto');
+    const meta = apt ? `${u.rooms.includes('Suíte') ? '2 dorm. (1 suíte)' : ''} · ${fmtArea(u.area)}` : fmtArea(u.area);
+    return `<div class="unit${apt ? ' go' : ''}" data-u="${u.name}"><b>${u.name}</b><span>${meta}</span></div>`;
   }).join('');
   document.querySelectorAll('#i-units .unit').forEach(el => {
     const u = units.find(x => x.name === el.dataset.u);
     el.onmouseenter = () => setUnitHover(u); el.onmouseleave = () => setUnitHover(null);
+    if (u.name.startsWith('Apto')) el.onclick = () => focusApt(u.name);
   });
   const fins = [...new Set(def.rooms.filter(r => r.pieces.length).map(r => r.f))];
   $('#i-legend').innerHTML = fins.map(k => `<span><i style="background:${FIN[k].legend[0]}"></i>${FIN[k].legend[1]}</span>`).join('');
   $('#b-up').disabled = i >= 9; $('#b-down').disabled = i <= 0;
+  $('#i-kbd').textContent = def.apts ? 'Clique em um apartamento para vê-lo isolado' : 'Planta ilustrativa · divisões fictícias para teste';
+  $('#info').classList.add('on');
+}
+function openAptUI(u) {
+  const f = floors[current];
+  setPanelMode(true);
+  $('#i-eyebrow').textContent = `${f.name} · Apartamento`;
+  $('#i-title').textContent = u.name;
+  $('#i-sub').textContent = `2 dormitórios (1 suíte) · ${fmtArea(u.area)}`;
+  const rooms = u.roomObjs.filter(r => r.pieces.length);
+  $('#i-units').innerHTML = rooms.map(r => `<div class="unit" data-r="${r.id}"><b>${r.n}</b><span>${fmtArea(r.area)}</span></div>`).join('');
+  document.querySelectorAll('#i-units .unit').forEach(el => {
+    const r = rooms.find(x => x.id === +el.dataset.r);
+    el.onmouseenter = () => setRoomHover(r); el.onmouseleave = () => setRoomHover(null);
+  });
+  const fins = [...new Set(rooms.map(r => r.f))];
+  $('#i-legend').innerHTML = fins.map(k => `<span><i style="background:${FIN[k].legend[0]}"></i>${FIN[k].legend[1]}</span>`).join('');
+  $('#i-kbd').textContent = 'Passe o mouse nos cômodos · Esc volta ao andar';
   $('#info').classList.add('on');
 }
 function closePlanUI(i) {
@@ -1343,16 +1519,18 @@ function closePlanUI(i) {
     const p = floors[i].plan;
     p.group.visible = false;
     p.units.forEach(u => { u.hiT = 0; u.mesh.material.opacity = 0; });
+    p.def.rooms.forEach(r => { r.hiT = 0; if (r.hi) r.hi.material.opacity = 0; r.el?.classList.remove('on'); });
   }
 }
 $('#b-back').onclick = backToTower;
-$('#b-up').onclick = () => { if (state === 'plan' && current < 9) openFloor(current + 1); };
-$('#b-down').onclick = () => { if (state === 'plan' && current > 0) openFloor(current - 1); };
+$('#b-floor').onclick = unfocusApt;
+$('#b-up').onclick = () => { if (state === 'plan' && !aptFocus && current < 9) openFloor(current + 1); };
+$('#b-down').onclick = () => { if (state === 'plan' && !aptFocus && current > 0) openFloor(current - 1); };
 document.querySelectorAll('#time button').forEach(b => b.onclick = () => { if (b.dataset.t !== timeName) setTime(b.dataset.t); });
 addEventListener('keydown', e => {
-  if (e.key === 'Escape') backToTower();
-  if (state === 'plan' && e.key === 'ArrowUp' && current < 9) openFloor(current + 1);
-  if (state === 'plan' && e.key === 'ArrowDown' && current > 0) openFloor(current - 1);
+  if (e.key === 'Escape') { if (aptFocus) unfocusApt(); else backToTower(); }
+  if (state === 'plan' && !aptFocus && e.key === 'ArrowUp' && current < 9) openFloor(current + 1);
+  if (state === 'plan' && !aptFocus && e.key === 'ArrowDown' && current > 0) openFloor(current - 1);
 });
 
 /* ---------- picking ---------- */
@@ -1362,6 +1540,7 @@ function pick(ev) {
   ndc.set(ev.clientX / innerWidth * 2 - 1, -(ev.clientY / innerHeight) * 2 + 1);
   ray.setFromCamera(ndc, camera);
 }
+const isApt = r => !!r && !!r.unit && r.unit.startsWith('Apto');
 renderer.domElement.addEventListener('pointermove', ev => {
   if (ev.pointerType === 'touch') return;
   pick(ev);
@@ -1372,21 +1551,27 @@ renderer.domElement.addEventListener('pointermove', ev => {
     if (i >= 0) showTip(`<b>${FLOOR_NAMES[i]}</b><span>${floorSub(i)}</span><i>Clique para ver a planta</i>`, ev.clientX, ev.clientY);
     else hideTip();
   } else if (state === 'plan') {
-    const hit = ray.intersectObjects(floors[current].plan.unitMeshes, false)[0];
-    const u = hit ? hit.object.userData.unit : null;
-    setUnitHover(u);
-    if (u) showTip(`<b>${u.name}</b><span>${fmtArea(u.area)}${u.name.startsWith('Apto') ? ' · 2 dorm. (1 suíte)' : ''}</span>`, ev.clientX, ev.clientY);
-    else hideTip();
+    const r = roomUnder();
+    setRoomHover(r);
+    if (!aptFocus && isApt(r)) {
+      const u = floors[current].plan.units.find(x => x.name === r.unit);
+      showTip(`<b>${u.name}</b><span>${fmtArea(u.area)} · 2 dorm. (1 suíte)</span><i>Clique para ver só este apartamento</i>`, ev.clientX, ev.clientY);
+    } else hideTip();
   }
 });
-renderer.domElement.addEventListener('pointerleave', () => { if (state === 'tower') setHover(-1); setUnitHover(null); hideTip(); });
+renderer.domElement.addEventListener('pointerleave', () => { if (state === 'tower') setHover(-1); if (state === 'plan') setRoomHover(null); hideTip(); });
 renderer.domElement.addEventListener('pointerdown', ev => downAt = [ev.clientX, ev.clientY]);
 renderer.domElement.addEventListener('pointerup', ev => {
   if (!downAt || Math.hypot(ev.clientX - downAt[0], ev.clientY - downAt[1]) > 6) return;
-  if (state !== 'tower') return;
   pick(ev);
-  const hit = ray.intersectObjects(hoverables.filter(m => floors[m.userData.floor].shown), false)[0];
-  if (hit) openFloor(hit.object.userData.floor);
+  if (state === 'tower') {
+    const hit = ray.intersectObjects(hoverables.filter(m => floors[m.userData.floor].shown), false)[0];
+    if (hit) openFloor(hit.object.userData.floor);
+  } else if (state === 'plan') {
+    const r = roomUnder();
+    if (aptFocus) setRoomHover(r);              // toque: mostra o comodo
+    else if (isApt(r)) focusApt(r.unit);
+  }
 });
 
 /* =====================================================================
@@ -1401,7 +1586,7 @@ function frame() {
     f.hover += (f.hoverT - f.hover) * Math.min(1, dt * 12);
     f.facadeMat.emissiveIntensity = f.hover * 0.32;
   }
-  if (current >= 0 && floors[current].plan) for (const u of floors[current].plan.units) { u.mesh.material.opacity += ((u.hiT || 0) - u.mesh.material.opacity) * Math.min(1, dt * 12); }
+  if (current >= 0 && floors[current].plan) { const p = floors[current].plan, k = Math.min(1, dt * 12); for (const u of p.units) u.mesh.material.opacity += ((u.hiT || 0) - u.mesh.material.opacity) * k; for (const r of p.def.rooms) if (r.hi) r.hi.material.opacity += ((r.hiT || 0) - r.hi.material.opacity) * k; }
   if (lampPool) lampPool.opacity = 0.38 * TS.night;
   if (controls.enabled) { controls.update(); if (controls.target.y < 0) controls.target.y = 0; }
   composer.render();
@@ -1435,7 +1620,7 @@ async function init() {
   state = 'tower';
   window.__ready = true;
 }
-window.__debug = { openFloor, backToTower, setTime, floors, lit: (i, v = 1) => { floors[i].glassMat.userData.uLit.value = v; focusBloom = v ? 0.25 : 0; applyTime(false); }, cam: (p, t) => { camera.position.set(...p); controls.target.set(...t); camera.lookAt(...t); }, get state() { return state; } };
+window.__debug = { openFloor, backToTower, focusApt, unfocusApt, setTime, floors, lit: (i, v = 1) => { floors[i].glassMat.userData.uLit.value = v; focusBloom = v ? 0.25 : 0; applyTime(false); }, cam: (p, t) => { camera.position.set(...p); controls.target.set(...t); camera.lookAt(...t); }, get state() { return state; } };
 init().catch(err => { console.error(err); $('#load .box').innerHTML = `<p>Não foi possível carregar a cena.</p><pre>${err && (err.stack || err.message || err)}</pre>`; });
 </script>
 </body>
